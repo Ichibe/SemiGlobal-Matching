@@ -309,6 +309,15 @@ void saveDisparityMap(cv::Mat &disparityMap, int disparityRange) {
     //cv::imwrite(outputFile, disparityMap);
 }
 
+/*
+ * JNIEXPORT jbyteArray JNICALL Java_SemiGlobalMatchingStorlet_process
+    (JNIEnv *env, jobject me, jbyteArray inBytes1, jbyteArray inBytes2)
+{
+    jbyteArray outBytesj = env->NewByteArray(sizeof(uchar) * 1);
+    return outBytesj;
+}
+*/
+
 JNIEXPORT jbyteArray JNICALL Java_SemiGlobalMatchingStorlet_process
     (JNIEnv *env, jobject me, jbyteArray inBytes1, jbyteArray inBytes2)
 {

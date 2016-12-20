@@ -1,0 +1,2 @@
+LIBPATH=/usr/lib/x86_64-linux-gnu
+export LD_PRELOAD=${LIBPATH}/libopencv_nonfree.so:${LIBPATH}/libopencv_core.so:${LIBPATH}/libopencv_highgui.so:${LIBPATH}/libopencv_features2d.so:${LIBPATH}/libopencv_contrib.so

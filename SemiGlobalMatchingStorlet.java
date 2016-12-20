@@ -14,11 +14,10 @@
  * ---------------------------------------------------------------------------
  */
 
-/*
- * Author: kajinamit
- */
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.OutputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.BufferedInputStream;
@@ -27,71 +26,49 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
 
-import org.openstack.storlet.common.IStorlet;
-import org.openstack.storlet.common.StorletException;
-import org.openstack.storlet.common.StorletInputStream;
-import org.openstack.storlet.common.StorletLogger;
-import org.openstack.storlet.common.StorletOutputStream;
-import org.openstack.storlet.common.StorletObjectOutputStream;
 
-
-public class SemiGlobalMatchingStorlet implements IStorlet {
+public class SemiGlobalMatchingStorlet {
 
     static{
         System.loadLibrary("semiglobalmatching");
     }
 
-    native byte[] process(byte[] inBytes1, byte[] inBytes2);
+    public native byte[] process(byte[] inBytes1, byte[] inBytes2);
 
-	/***
-	 * Storlet invoke method.
-	 * 
-	 * @throws StorletException
-	 */
-	@Override
-	public void invoke(ArrayList<StorletInputStream> inputStreams,
-			ArrayList<StorletOutputStream> outputStreams,
-			Map<String, String> params, StorletLogger logger)
-			throws StorletException {
-        logger.emitLog("1");
-	logger.emitLog("size:" + inputStreams.size());
-        InputStream inputStream = inputStreams.get(0).getStream();
-        logger.emitLog("2");
-        InputStream inputStream1 = inputStreams.get(1).getStream();
-        logger.emitLog("3");
-        final HashMap<String, String> metadata = inputStreams.get(0)
-                .getMetadata();
-        logger.emitLog("4");
-        final StorletObjectOutputStream storletObjectOutputStream = (StorletObjectOutputStream) outputStreams
-                .get(0);
+    /***
+     ** Storlet invoke method.
+     *
+     * @throws StorletException
+     */
+    public static void main(String[] args){
+        FileInputStream left, right;
+        FileOutputStream outputStream;
+        try{
+            left = new FileInputStream("./test/bull/left.png");
+            right = new FileInputStream("./test/bull/right.png");
 
-        logger.emitLog("5");
-        OutputStream outputStream = storletObjectOutputStream.getStream();
-
-        logger.emitLog("6");
-        int readLength = 512;
-        logger.emitLog("7");
+            outputStream = new FileOutputStream("./test_output.png");
+        } catch (IOException e) {
+            System.out.println("fail to open");
+        return;
+    }
+        int readLength = 64 * 1024;
+        // int readLength = 512;
         ByteArrayOutputStream byteStream = new ByteArrayOutputStream(readLength);
-        logger.emitLog("8");
         ByteArrayOutputStream byteStream1 = new ByteArrayOutputStream(readLength);
-        logger.emitLog("9");
         byte[] bytes = new byte[readLength];
-        logger.emitLog("10");
-        BufferedInputStream bis = new BufferedInputStream(inputStream, readLength);
-        logger.emitLog("11");
-        BufferedInputStream bis1 = new BufferedInputStream(inputStream1, readLength);
+        BufferedInputStream bis = new BufferedInputStream(left, readLength);
+        BufferedInputStream bis1 = new BufferedInputStream(right, readLength);
 
         // Red data from stream
-        logger.emitLog("Reading data from inputStream");
         try{
             int len = 0;
             while ((len = bis.read(bytes, 0, readLength)) > 0) {
                 byteStream.write(bytes, 0, len);
             }
         } catch (IOException e) {
-            logger.emitLog("Failed to read data from inputStream");
-            logger.Flush();
-            throw new StorletException(e.getMessage());
+            System.out.println("fail to read");
+        return;
         }
         byte[] inBytes = byteStream.toByteArray();
 
@@ -101,38 +78,35 @@ public class SemiGlobalMatchingStorlet implements IStorlet {
                 byteStream1.write(bytes, 0, len);
             }
         } catch (IOException e) {
-            logger.emitLog("Failed to read data from inputStream");
-            logger.Flush();
-            throw new StorletException(e.getMessage());
+            System.out.println("fail to read");
+            return;
         }
 
         byte[] inBytes1 = byteStream1.toByteArray();
         long start = System.currentTimeMillis();
-        logger.emitLog("Start processing data1");
         byte[] outBytes = null;
         try{
-            outBytes = process(inBytes, inBytes1);
+            SemiGlobalMatchingStorlet storlet = new SemiGlobalMatchingStorlet();
+
+            outBytes = storlet.process(inBytes, inBytes1);
         } catch (Exception e) {
-            logger.emitLog("Failed to process  inputStream");
-            logger.emitLog(e.getMessage());
-            logger.Flush();
-            throw new StorletException(e.getMessage());
+            System.out.println("fail to process");
+            return;
         }
         //byte[] outBytes = inBytes;
         long end = System.currentTimeMillis();
-        logger.emitLog(String.format("TIME,%d,%d,%d,%d", start, end-start, inBytes1.length, outBytes.length));
 
-        storletObjectOutputStream.setMetadata(metadata);
-        logger.emitLog("Sending back object data");
         try{
             // Write raw data
             outputStream.write(outBytes);
+            // outputStream.write("".getBytes());
             // Close streams
-            inputStream.close();
+            left.close();
+            right.close();
             outputStream.close();
         } catch (IOException e) {
-		    logger.emitLog(e.getMessage());
-			throw new StorletException(e.getMessage());
-		}
-	}
+            System.out.println("fail to close");
+            return;
+        }
+    }
 }

@@ -4,8 +4,14 @@
 #include <cmath>
 #include <ctime>
 
+#include <string.h>
+
+#include <fstream>
+
 #include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
+
+#include "SemiGlobalMatchingStorlet.h"
 
 #include "gaussian.h"
 
@@ -290,38 +296,46 @@ void computeDisparity(unsigned short ***S, int rows, int cols, int disparityRang
     }
 }
 
-void saveDisparityMap(cv::Mat &disparityMap, int disparityRange, char* outputFile) {
+
+// ichibe changed 
+//void saveDisparityMap(cv::Mat &disparityMap, int disparityRange, char* outputFile) {
+void saveDisparityMap(cv::Mat &disparityMap, int disparityRange) {
     double factor = 256.0 / disparityRange;
     for (int row = 0; row < disparityMap.rows; ++row) {
         for (int col = 0; col < disparityMap.cols; ++col) {
             disparityMap.at<uchar>(row, col) *= factor;
         }
     }
-    cv::imwrite(outputFile, disparityMap);
+    //cv::imwrite(outputFile, disparityMap);
 }
 
-int main(int argc, char** argv) {
-
-    if (argc != 5) {
-        std::cerr << "Usage: " << argv[0] << " <left image> <right image> <output image file> <disparity range>" << std::endl;
-        return -1;
-    }
-
-    char *firstFileName = argv[1];
-    char *secondFileName = argv[2];
-    char *outFileName = argv[3];
-
+JNIEXPORT jbyteArray JNICALL Java_SemiGlobalMatchingStorlet_process
+    (JNIEnv *env, jobject me, jbyteArray inBytes1, jbyteArray inBytes2)
+{
+    jboolean b;
+    jbyte* firstBuf = env->GetByteArrayElements(inBytes1, &b);
+    jsize fbuf_len = env->GetArrayLength(inBytes1);
+    jbyte* secondBuf = env->GetByteArrayElements(inBytes2, &b);
+    jsize sbuf_len = env->GetArrayLength(inBytes2);
+    
     cv::Mat firstImage;
     cv::Mat secondImage;
-    firstImage = cv::imread(firstFileName, CV_LOAD_IMAGE_GRAYSCALE);
-    secondImage = cv::imread(secondFileName, CV_LOAD_IMAGE_GRAYSCALE);
+    //firstImage = cv::imread(firstFileName, CV_LOAD_IMAGE_GRAYSCALE);
+    //secondImage = cv::imread(secondFileName, CV_LOAD_IMAGE_GRAYSCALE);
+
+    //char *outFileName="./result.png";
+    unsigned int disparityRange = 24;
+
+    //printf("%d , %d\n", fbuf_len, sbuf_len);
+    //printf("char size:%ld \n", sizeof(char));
+    firstImage = cv::imdecode(cv::Mat(cv::Size(1, fbuf_len), CV_8UC1, (void*)firstBuf), CV_LOAD_IMAGE_GRAYSCALE);
+    secondImage = cv::imdecode(cv::Mat(cv::Size(1, sbuf_len), CV_8UC1, (void*)secondBuf), CV_LOAD_IMAGE_GRAYSCALE);
 
     if(!firstImage.data || !secondImage.data) {
         std::cerr <<  "Could not open or find one of the images!" << std::endl;
-        return -1;
+        return NULL;
     }
 
-    unsigned int disparityRange = atoi(argv[4]);
     unsigned short ***C; // pixel cost array W x H x D
     unsigned short ***S; // aggregated cost array W x H x D
     unsigned short ****A; // single path cost array 2 x W x H x D
@@ -333,7 +347,7 @@ int main(int argc, char** argv) {
 
     clock_t begin = clock();
 
-    std::cout << "Allocating space..." << std::endl;
+    //std::cout << "Allocating space..." << std::endl;
 
     // allocate cost arrays
     C = new unsigned short**[firstImage.rows];
@@ -361,29 +375,98 @@ int main(int argc, char** argv) {
         }
     }
 
-    std::cout << "Smoothing images..." << std::endl;
+    //std::cout << "Smoothing images..." << std::endl;
     grayscaleGaussianBlur(firstImage, firstImage, BLUR_RADIUS);
     grayscaleGaussianBlur(secondImage, secondImage, BLUR_RADIUS);
 
-    std::cout << "Calculating pixel cost for the image..." << std::endl;
+    //std::cout << "Calculating pixel cost for the image..." << std::endl;
     calculatePixelCost(firstImage, secondImage, disparityRange, C);
     if(DEBUG) {
         printArray(C, firstImage.rows, firstImage.cols, disparityRange);
     }
-    std::cout << "Aggregating costs..." << std::endl;
+    //std::cout << "Aggregating costs..." << std::endl;
     aggregateCosts(firstImage.rows, firstImage.cols, disparityRange, C, A, S);
 
     cv::Mat disparityMap = cv::Mat(cv::Size(firstImage.cols, firstImage.rows), CV_8UC1, cv::Scalar::all(0));
 
-    std::cout << "Computing disparity..." << std::endl;
+    //std::cout << "Computing disparity..." << std::endl;
     computeDisparity(S, firstImage.rows, firstImage.cols, disparityRange, disparityMap);
 
     clock_t end = clock();
     double elapsed_secs = double(end - begin) / CLOCKS_PER_SEC;
 
-    printf("Done in %.2lf seconds.\n", elapsed_secs);
+    //printf("Done in %.2lf seconds.\n", elapsed_secs);
 
-    saveDisparityMap(disparityMap, disparityRange, outFileName);
+    saveDisparityMap(disparityMap, disparityRange);
 
-    return 0;
+    std::vector<uchar> outbuf;
+    std::vector<int> params(2);
+    params[0] = CV_IMWRITE_PNG_COMPRESSION;
+    params[1] = 9;
+    cv::imencode(".png", disparityMap, outbuf, params);
+    //printf("length:%d\n", (int)outbuf.size());
+    
+    //size_t disparityMapLen = disparityMap.cols * disparityMap.rows;
+    size_t disparityMapLen = outbuf.size();
+    //printf("disparityMapLen:%ld\n", (long int)disparityMapLen);
+    jbyteArray outBytesj = env->NewByteArray(sizeof(uchar) * disparityMapLen);
+    if (outBytesj == NULL) {
+        env->ReleaseByteArrayElements(inBytes1, firstBuf, 0);
+        env->ReleaseByteArrayElements(inBytes2, secondBuf, 0);
+        printf("outBytesj is NULL");
+        return NULL;
+    }
+    jbyte* outBytes = env->GetByteArrayElements(outBytesj, NULL);
+    if (outBytes == NULL) {
+        env->ReleaseByteArrayElements(inBytes1, firstBuf, 0);
+        env->ReleaseByteArrayElements(inBytes2, secondBuf, 0);
+        printf("outBytes is NULL");
+        return NULL;
+    }
+    if(disparityMap.data == NULL ){
+        printf("disparityMap.data is NULL");
+    }
+    //printf("size of float :%d\n", (int)sizeof(uchar));
+    //printf("size of float :%d\n", (int)sizeof(double));
+    memcpy(outBytes, &outbuf[0], sizeof(uchar)*disparityMapLen);
+    //printf("fnish\n");
+    
+   //delete buffer
+   for (int row = 0; row < firstImage.rows; ++row) {
+       for (int col = 0; col < firstImage.cols; ++col) {
+            delete C[row][col];
+            delete S[row][col]; // initialize to 0
+        }
+        delete[] C[row];
+        delete[] S[row];
+    }
+    delete[] C;
+    delete[] S;
+ 
+    for(int path = 0; path < PATHS_PER_SCAN; ++path) {
+        for (int row = 0; row < firstImage.rows; ++row) {
+            for (int col = 0; col < firstImage.cols; ++col) {
+                //for (unsigned int d = 0; d < disparityRange; ++d) {
+                //    delete A[path][row][col][d];
+                //}
+		delete[] A[path][row][col];
+            }
+	    delete[] A[path][row];
+        }
+        delete[] A[path];
+    }
+
+    delete[] A;
+
+    firstImage.release();
+    secondImage.release();
+    disparityMap.release();
+
+    // Release all arrays
+    env->ReleaseByteArrayElements(inBytes1, firstBuf, 0);
+    env->ReleaseByteArrayElements(inBytes2, secondBuf, 0);
+    env->ReleaseByteArrayElements(outBytesj, outBytes, 0);
+
+    return outBytesj;
 }
+
